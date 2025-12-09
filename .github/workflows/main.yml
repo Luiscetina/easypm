@@ -30,12 +30,20 @@ jobs:
 
       - name: Install devkitPro (apt) and dkp-pacman
         run: |
-          # download and run devkitPro installer (adds apt repo)
-          wget https://apt.devkitpro.org/install-devkitpro-pkg -O install-devkitpro-pkg
+          wget https://new.devkitpro.org/install-devkitpro-pkg -O install-devkitpro-pkg
           chmod +x install-devkitpro-pkg
           sudo ./install-devkitpro-pkg
           sudo apt-get update
           sudo apt-get install -y devkitpro-pacman
+
+      #- name: Install devkitPro (apt) and dkp-pacman
+       # run: |
+          # download and run devkitPro installer (adds apt repo)
+         # wget https://apt.devkitpro.org/install-devkitpro-pkg -O install-devkitpro-pkg
+         # chmod +x install-devkitpro-pkg
+         # sudo ./install-devkitpro-pkg
+         # sudo apt-get update
+         # sudo apt-get install -y devkitpro-pacman
 
       - name: Install devkitPro packages (devkitA64, libnx, tools)
         run: |
