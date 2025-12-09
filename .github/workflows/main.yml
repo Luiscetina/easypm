@@ -1,4 +1,4 @@
-Ename: CI — Build easypm (fixed devkitpro)
+name: CI — Build easypm (fixed devkitpro)
 
 on:
   push:
