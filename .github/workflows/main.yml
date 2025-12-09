@@ -1,4 +1,4 @@
-name: CI — Build easypm
+name: CI — Build easypm (fixed devkitpro)
 
 on:
   push:
@@ -16,6 +16,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Restore devkitPro cache
+        id: restore-devkitpro-cache
         uses: actions/cache@v4
         with:
           path: /opt/devkitpro
@@ -26,24 +27,38 @@ jobs:
       - name: Install system prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget git build-essential python3 ca-certificates
+          sudo apt-get install -y wget git build-essential python3 ca-certificates dnsutils || true
 
       - name: Install devkitPro (apt) and dkp-pacman
+        if: steps.restore-devkitpro-cache.outputs.cache-hit != 'true'
         run: |
-          wget https://new.devkitpro.org/install-devkitpro-pkg -O install-devkitpro-pkg
-          chmod +x install-devkitpro-pkg
-          sudo ./install-devkitpro-pkg
+          set -euo pipefail
+          # Preferred and fallback endpoints for the installer
+          URLS=(
+            "https://apt.devkitpro.org/install-devkitpro-pkg"
+            "https://new.devkitpro.org/install-devkitpro-pkg"
+          )
+          SUCCESS=0
+          for URL in "${URLS[@]}"; do
+            echo "Attempting to download installer from: $URL"
+            if wget --tries=5 --timeout=30 --retry-connrefused --waitretry=5 --quiet "$URL" -O install-devkitpro-pkg; then
+              chmod +x install-devkitpro-pkg
+              sudo ./install-devkitpro-pkg
+              SUCCESS=1
+              break
+            else
+              echo "Download from $URL failed, trying next endpoint..."
+            fi
+          done
+          if [ $SUCCESS -ne 1 ]; then
+            echo "ERROR: failed to download devkitPro installer from known endpoints" >&2
+            echo "DNS diagnostic:"
+            host apt.devkitpro.org || true
+            host new.devkitpro.org || true
+            exit 4
+          fi
           sudo apt-get update
           sudo apt-get install -y devkitpro-pacman
-
-      #- name: Install devkitPro (apt) and dkp-pacman
-       # run: |
-          # download and run devkitPro installer (adds apt repo)
-         # wget https://apt.devkitpro.org/install-devkitpro-pkg -O install-devkitpro-pkg
-         # chmod +x install-devkitpro-pkg
-         # sudo ./install-devkitpro-pkg
-         # sudo apt-get update
-         # sudo apt-get install -y devkitpro-pacman
 
       - name: Install devkitPro packages (devkitA64, libnx, tools)
         run: |
