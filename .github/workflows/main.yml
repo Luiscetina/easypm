@@ -45,7 +45,7 @@ jobs:
               sudo apt-get install -y --no-install-recommends gnupg ca-certificates wget curl || true
               sudo mkdir -p /etc/apt/sources.list.d
               echo "deb https://apt.devkitpro.org stable main" | sudo tee /etc/apt/sources.list.d/devkitpro.list
-              sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys C9D672AF4128A2F1
+              curl -fsSL https://apt.devkitpro.org/devkitpro-pub.gpg | sudo tee /etc/apt/trusted.gpg.d/devkitpro.gpg > /dev/null
               URL="https://apt.devkitpro.org/install-devkitpro-pacman"
               if curl -fSsL "$URL" -o /tmp/install-devkitpro-pkg; then
                 sudo bash /tmp/install-devkitpro-pkg || { echo "Installer script failed"; host apt.devkitpro.org || true; exit 4; }
