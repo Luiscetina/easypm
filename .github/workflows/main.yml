@@ -1,4 +1,4 @@
-name: CI — Build easypm (fixed devkitpro)
+Ename: CI — Build easypm (fixed devkitpro)
 
 on:
   push:
@@ -9,114 +9,69 @@ on:
 
 jobs:
   build:
-    name: Build (Ubuntu)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Cache devkitPro
-        uses: actions/cache@v4
-        with:
-          path: /opt/devkitpro
-          key: ${{ runner.os }}-devkitpro-${{ hashFiles('.github/workflows/main.yml') }}
-          restore-keys: |
-            ${{ runner.os }}-devkitpro-
-
-      - name: Install system prerequisites
+      - name: Set up build dependencies
         run: |
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y wget git build-essential python3 ca-certificates dnsutils curl gnupg || true
+          sudo apt-get install -y --no-install-recommends gnupg ca-certificates wget curl apt-transport-https host
 
-      - name: Install devkitPro (apt-first, repo fallback)
-        shell: bash
+      - name: Add devkitPro APT repository and key
+        run: |
+          echo "deb https://apt.devkitpro.org stable main" | sudo tee /etc/apt/sources.list.d/devkitpro.list
+          curl -fsSL https://apt.devkitpro.org/devkitpro-pub.gpg | sudo tee /etc/apt/trusted.gpg.d/devkitpro.gpg > /dev/null
+          sudo apt-get update || true
+
+      - name: Install devkitpro-pacman with retry and fallback
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
           set -euo pipefail
-          if [ -d /opt/devkitpro ]; then
-            echo "/opt/devkitpro already exists, skipping install."
-            ls -la /opt/devkitpro || true
-          else
-            sudo apt-get update
-            echo "Attempting apt install of devkitpro-pacman..."
-            if sudo DEBIAN_FRONTEND=noninteractive apt-get install -y devkitpro-pacman; then
+          for i in 1 2 3; do
+            echo "Attempt $i: installing devkitpro-pacman via apt"
+            if sudo apt-get install -y devkitpro-pacman; then
               echo "devkitpro-pacman installed via apt"
-            else
-              echo "apt install failed; adding devkitPro apt repository and retrying..."
-              sudo apt-get install -y --no-install-recommends gnupg ca-certificates wget curl || true
-              sudo mkdir -p /etc/apt/sources.list.d
-              echo "deb https://apt.devkitpro.org stable main" | sudo tee /etc/apt/sources.list.d/devkitpro.list
-              curl -fsSL https://apt.devkitpro.org/devkitpro-pub.gpg | sudo tee /etc/apt/trusted.gpg.d/devkitpro.gpg > /dev/null
+              break
+            fi
+
+            echo "apt install failed; will retry after 20s"
+            sleep 20
+
+            if [ "$i" = "3" ]; then
+              echo "Final attempt failed; trying official installer script"
               URL="https://apt.devkitpro.org/install-devkitpro-pacman"
               if curl -fSsL "$URL" -o /tmp/install-devkitpro-pkg; then
-                sudo bash /tmp/install-devkitpro-pkg || { echo "Installer script failed"; host apt.devkitpro.org || true; exit 4; }
+                sudo bash /tmp/install-devkitpro-pkg || { echo "Installer script failed"; host apt.devkitpro.org || true; exit 1; }
               else
                 echo "Failed to download installer from $URL"
                 echo "DNS / connectivity diagnostic:"
                 host apt.devkitpro.org || true
-                host new.devkitpro.org || true
-                exit 4
+                host pkg.devkitpro.org || true
+                exit 1
               fi
             fi
-          fi
+          done
 
-      - name: Verify devkitPro
-        run: |
-          echo "devkitpro directories:"
-          sudo ls -la /opt/devkitpro || true
-          echo "pacman status:"
-          if command -v dkp-pacman >/dev/null 2>&1; then
-            dkp-pacman -V || true
-          else
-            echo "dkp-pacman not found in PATH"
-          fi
-
-      - name: Install devkitPro packages (devkitA64, libnx, tools)
+      - name: Verify devkitpro-pacman
         run: |
           if command -v dkp-pacman >/dev/null 2>&1; then
-            sudo dkp-pacman -Syu --noconfirm
-            sudo dkp-pacman -S --noconfirm devkitA64 libnx switch-tools
+            echo "dkp-pacman available:"; dkp-pacman --version || true
           else
-            echo "dkp-pacman not available; skipping devkitPro package install"
+            echo "dkp-pacman not found; listing /opt/devkitpro"; ls -la /opt/devkitpro || true; exit 1
           fi
 
-      - name: Print environment info
+      - name: Install toolchain packages with dkp-pacman
         run: |
-          echo "devkitPro: $(ls -1 /opt/devkitpro || true)"
-          echo "devkitA64: $(which aarch64-none-elf-gcc || true)"
-          aarch64-none-elf-gcc --version || true
+          # Adjust packages as needed for your project
+          if command -v dkp-pacman >/dev/null 2>&1; then
+            sudo dkp-pacman -S --noconfirm devkitA64 || true
+          else
+            echo "dkp-pacman missing; skipping devkit package install"; exit 1
+          fi
 
-      - name: Build (Makefile)
+      - name: Build
         run: |
-          # Attempt a clean build using the repo Makefile
-          make clean || true
           make -j$(nproc)
-
-      - name: List build outputs
-        run: |
-          echo "Root files:"
-          ls -la
-          echo "Build folder (if present):"
-          ls -la build || true
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: easypm-build-artifacts
-          path: |
-            *.nro
-            *.nsp
-            *.zip
-            build/*.nro
-            build/*.nsp
-            romfs/*
-            screenshot.png
-            icon.jpg
-
-      - name: Save devkitPro to cache (best-effort)
-        if: always()
-        uses: actions/cache@v4
-        with:
-          path: /opt/devkitpro
-          key: ${{ runner.os }}-devkitpro-${{ hashFiles('**/Makefile') }}
-          restore-keys: |
-            ${{ runner.os }}-devkitpro-
