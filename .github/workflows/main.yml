@@ -12,71 +12,71 @@ jobs:
     name: Build (Ubuntu)
     runs-on: ubuntu-latest
     steps:
-- name: Checkout
-  uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-- name: Cache devkitPro
-  uses: actions/cache@v4
-  with:
-    path: /opt/devkitpro
-    key: Linux-devkitpro-${{ runner.os }}-${{ hashFiles('.github/workflows/devkitpro-apt-install.yml') }}
-    restore-keys: Linux-devkitpro-
+      - name: Cache devkitPro
+        uses: actions/cache@v4
+        with:
+          path: /opt/devkitpro
+          key: ${{ runner.os }}-devkitpro-${{ hashFiles('.github/workflows/main.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-devkitpro-
 
       - name: Install system prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget git build-essential python3 ca-certificates dnsutils || true
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y wget git build-essential python3 ca-certificates dnsutils curl gnupg || true
 
       - name: Install devkitPro (apt-first, repo fallback)
-  shell: bash
-  run: |
-    set -euo pipefail
-    if [ -d /opt/devkitpro ]; then
-      echo "/opt/devkitpro already exists, skipping install."
-      ls -la /opt/devkitpro || true
-    else
-      sudo apt-get update
-      echo "Attempting apt install of devkitpro-pacman..."
-      if sudo DEBIAN_FRONTEND=noninteractive apt-get install -y devkitpro-pacman; then
-        echo "devkitpro-pacman installed via apt"
-      else
-        echo "apt install failed; adding devkitPro apt repository and retrying..."
-        sudo apt-get install -y --no-install-recommends gnupg ca-certificates wget || true
-        sudo mkdir -p /etc/apt/sources.list.d
-        echo "deb https://apt.devkitpro.org stable main" | sudo tee /etc/apt/sources.list.d/devkitpro.list
-        URL="https://apt.devkitpro.org/install-devkitpro-pkg"
-        if curl -fSsL "$URL" -o /tmp/install-devkitpro-pkg; then
-          sudo bash /tmp/install-devkitpro-pkg || { echo "Installer script failed"; host apt.devkitpro.org || true; exit 4; }
-        else
-          echo "Failed to download installer from $URL"
-          echo "DNS / connectivity diagnostic:"
-          host apt.devkitpro.org || true
-          host new.devkitpro.org || true
-          exit 4
-        fi
-      fi
-    fi
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d /opt/devkitpro ]; then
+            echo "/opt/devkitpro already exists, skipping install."
+            ls -la /opt/devkitpro || true
+          else
+            sudo apt-get update
+            echo "Attempting apt install of devkitpro-pacman..."
+            if sudo DEBIAN_FRONTEND=noninteractive apt-get install -y devkitpro-pacman; then
+              echo "devkitpro-pacman installed via apt"
+            else
+              echo "apt install failed; adding devkitPro apt repository and retrying..."
+              sudo apt-get install -y --no-install-recommends gnupg ca-certificates wget curl || true
+              sudo mkdir -p /etc/apt/sources.list.d
+              echo "deb https://apt.devkitpro.org stable main" | sudo tee /etc/apt/sources.list.d/devkitpro.list
+              URL="https://apt.devkitpro.org/install-devkitpro-pkg"
+              if curl -fSsL "$URL" -o /tmp/install-devkitpro-pkg; then
+                sudo bash /tmp/install-devkitpro-pkg || { echo "Installer script failed"; host apt.devkitpro.org || true; exit 4; }
+              else
+                echo "Failed to download installer from $URL"
+                echo "DNS / connectivity diagnostic:"
+                host apt.devkitpro.org || true
+                host new.devkitpro.org || true
+                exit 4
+              fi
+            fi
+          fi
 
-    - name: Verify devkitPro
-  run: |
-    echo "devkitpro directories:"
-    sudo ls -la /opt/devkitpro || true
-    echo "pacman status:"
-    if command -v dkp-pacman >/dev/null 2>&1; then
-      dkp-pacman -V || true
-    else
-      echo "dkp-pacman not found in PATH"
-    fi
-
-- name: Continue build
-  run: |
-    echo "Add your build steps here (e.g. cmake && make)."
+      - name: Verify devkitPro
+        run: |
+          echo "devkitpro directories:"
+          sudo ls -la /opt/devkitpro || true
+          echo "pacman status:"
+          if command -v dkp-pacman >/dev/null 2>&1; then
+            dkp-pacman -V || true
+          else
+            echo "dkp-pacman not found in PATH"
+          fi
 
       - name: Install devkitPro packages (devkitA64, libnx, tools)
         run: |
-          # keep packages non-interactive
-          sudo dkp-pacman -Syu --noconfirm
-          sudo dkp-pacman -S --noconfirm devkitA64 libnx switch-tools
+          if command -v dkp-pacman >/dev/null 2>&1; then
+            sudo dkp-pacman -Syu --noconfirm
+            sudo dkp-pacman -S --noconfirm devkitA64 libnx switch-tools
+          else
+            echo "dkp-pacman not available; skipping devkitPro package install"
+          fi
 
       - name: Print environment info
         run: |
