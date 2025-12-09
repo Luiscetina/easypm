@@ -1,0 +1,86 @@
+name: CI — Build easypm
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build (Ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Restore devkitPro cache
+        uses: actions/cache@v4
+        with:
+          path: /opt/devkitpro
+          key: ${{ runner.os }}-devkitpro-${{ hashFiles('**/Makefile') }}
+          restore-keys: |
+            ${{ runner.os }}-devkitpro-
+
+      - name: Install system prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget git build-essential python3 ca-certificates
+
+      - name: Install devkitPro (apt) and dkp-pacman
+        run: |
+          # download and run devkitPro installer (adds apt repo)
+          wget https://apt.devkitpro.org/install-devkitpro-pkg -O install-devkitpro-pkg
+          chmod +x install-devkitpro-pkg
+          sudo ./install-devkitpro-pkg
+          sudo apt-get update
+          sudo apt-get install -y devkitpro-pacman
+
+      - name: Install devkitPro packages (devkitA64, libnx, tools)
+        run: |
+          # keep packages non-interactive
+          sudo dkp-pacman -Syu --noconfirm
+          sudo dkp-pacman -S --noconfirm devkitA64 libnx switch-tools
+
+      - name: Print environment info
+        run: |
+          echo "devkitPro: $(ls -1 /opt/devkitpro || true)"
+          echo "devkitA64: $(which aarch64-none-elf-gcc || true)"
+          aarch64-none-elf-gcc --version || true
+
+      - name: Build (Makefile)
+        run: |
+          # Attempt a clean build using the repo Makefile
+          make clean || true
+          make -j$(nproc)
+
+      - name: List build outputs
+        run: |
+          echo "Root files:"
+          ls -la
+          echo "Build folder (if present):"
+          ls -la build || true
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: easypm-build-artifacts
+          path: |
+            *.nro
+            *.nsp
+            *.zip
+            build/*.nro
+            build/*.nsp
+            romfs/*
+            screenshot.png
+            icon.jpg
+
+      - name: Save devkitPro to cache (best-effort)
+        if: always()
+        uses: actions/cache@v4
+        with:
+          path: /opt/devkitpro
+          key: ${{ runner.os }}-devkitpro-${{ hashFiles('**/Makefile') }}
+          restore-keys: |
+            ${{ runner.os }}-devkitpro-
